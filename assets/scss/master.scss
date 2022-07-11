@@ -1,0 +1,38 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-family: "Roboto", sans-serif;
+  font-weight: 300;
+  font-size: 110%;
+}
+h1,
+h2,
+h3 {
+  font-weight: 500;
+}
+
+button,
+.button {
+  display: inline-block;
+  cursor: pointer;
+  border: none;
+  //   background: linear-gradient(102.5deg, $primary-1, $primary-2);
+  background: $primary-1;
+  color: $text-inverse;
+  padding: 12px 25px;
+  font-family: inherit;
+  font-size: 100%;
+  font-weight: bold;
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.3);
+  transition: 0.15s ease transform, 0.15s ease box-shadow,
+    0.15s ease background-color;
+
+  &:hover {
+    // transform: translateY(-1px);
+    background-color: $primary-2;
+  }
+}
