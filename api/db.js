@@ -89,8 +89,40 @@ const addPhotos = async (albumID, photos) => {
   }
 };
 
+const removePhoto = async (albumID, photo) => {
+  try {
+    AWS.config.update({
+      accessKeyId: process.env.AWS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_KEY,
+      region: process.env.ALBUM_DB_REGION,
+    });
+
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+      TableName: process.env.ALBUM_DB_NAME,
+      Key: {
+        album_id: albumID,
+      },
+      UpdateExpression: "DELETE photos :photo",
+      ExpressionAttributeValues: {
+        ":photo": docClient.createSet(photo),
+      },
+      ReturnValues: "UPDATED_NEW",
+    };
+
+    const response = await docClient.update(params).promise();
+    console.log(response);
+    return response;
+  } catch (err) {
+    console.log(err);
+    return { err };
+  }
+};
+
 module.exports = {
   put,
   get,
   addPhotos,
+  removePhoto,
 };

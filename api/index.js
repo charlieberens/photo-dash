@@ -5,6 +5,7 @@ app.use(express.json());
 
 const router = express.Router();
 const crypto = require("crypto");
+const date = require("date-and-time");
 
 const lifetime = 60 * 60 * 24 * 7;
 
@@ -47,10 +48,13 @@ const fileUpload = require("express-fileupload");
 // });
 
 // DB Setup
-const { put, get, addPhotos } = require("./db");
+const { put, get, addPhotos, removePhoto } = require("./db");
 
 // S3 Setup
-const { upload } = require("./s3");
+const { upload, photoDel } = require("./s3");
+
+// Compression
+const sharp = require("sharp");
 
 // Encrypter
 class Encrypter {
@@ -89,8 +93,8 @@ app.get("/secret", (req, res) => {
 
 // Vaguely Garbage PW Implementation
 app.post("/login", (req, res) => {
-  const { email, pw } = req.body;
   try {
+    const { email, pw } = req.body;
     const valid_accounts = JSON.parse(process.env.ACCOUNTS).filter(
       (account) =>
         account.email === email &&
@@ -120,15 +124,28 @@ app.get("/dashboard", checkToken, (req, res) => {
   // Verify token
   res.send({ valid: true });
 });
+
+function replaceAll(str, find, replace) {
+  let prevstr;
+  while (prevstr != str) {
+    prevstr = str;
+    str = str.replace(find, replace);
+  }
+  return str;
+}
+
 app.post("/albums", checkToken, async (req, res) => {
   const { title, description } = req.body;
   if (!title) {
     res.send({ err: "Title is required" });
   }
-  const id = title
-    .replace(" ", "_")
-    .toLowerCase()
-    .replace(/[^0-9a-z_]/, "");
+
+  const id = replaceAll(
+    replaceAll(title.toLowerCase(), " ", "_"),
+    /[^0-9a-z_]/,
+    ""
+  );
+
   try {
     const dbRes = await put(id, title);
     res.send({ success: true, message: `${title} probably added` });
@@ -162,32 +179,54 @@ app.post("/photos", checkToken, fileUpload(), async (req, res) => {
       if (dbRes.items.filter((item) => item.album_id === album_id).length) {
         //Check if album exists
         // Upload to s3
-        let successes = [];
+        let return_arr = [];
         let photos = [];
         for (let i = 0; i < files.length; i++) {
+          let deconstruct = files[i].name.split(".");
+          if (process.env.USE_TIMESTAMP) {
+            const now = new Date();
+            const time = date.format(now, "YYYYMMDD-HHmmss");
+
+            deconstruct[deconstruct.length - 2] =
+              time + "-" + deconstruct[deconstruct.length - 2];
+          }
+          let filename = deconstruct.join(".");
+
           try {
             const { Key: key, Location: location } = await upload(
               files[i],
-              `${album_id}/${files[i].name}`
+              `photos/large/${filename}`
             );
+
             if (key) {
-              successes.push({ success: true, name: files[i].name });
+              return_arr.push({ success: true, name: files[i].name, location });
               photos.push(location);
-              console.log(`${key} uploaded to s3`);
+
+              // Upload compressed image
+              sharp(files[i].data)
+                .resize({ width: 400 })
+                .toBuffer()
+                .then((data) => {
+                  upload({ data }, `photos/small/${filename}`);
+                });
             } else {
-              successes.push({ success: false, name: files[i].name });
+              return_arr.push({ success: false, name: files[i].name });
             }
           } catch (err) {
-            successes.push({ success: false, err });
+            console.log(err);
+            return_arr.push({ success: false, err });
           }
         }
 
         // Add urls to db
-        const photosRes = await addPhotos(album_id, photos);
+        const photosRes = await addPhotos(
+          album_id,
+          photos.map((photo) => photo)
+        );
 
         console.log(`${photos.join(", ")} (hopefully) added to db`);
 
-        res.status(200).json({ successes });
+        res.status(200).json({ return_arr });
       } else {
         res.send({ err: "Album not found" });
       }
@@ -197,6 +236,28 @@ app.post("/photos", checkToken, fileUpload(), async (req, res) => {
   } catch (err) {
     console.log(err);
     res.send({ err: err.toString() });
+  }
+});
+
+app.delete("/photos", checkToken, async (req, res) => {
+  let { photo: photoString, album_id } = req.query;
+  const key = decodeURI(photoString).split("aws.com/").pop();
+
+  try {
+    const { err, data } = photoDel(key);
+    if (err) {
+      console.log(`Error deleting ${key}`);
+      console.log(err);
+      res.send({ err });
+    } else {
+      console.log({ data });
+      removePhoto(album_id, photoString);
+      console.log(`${key} deleted`);
+      res.send({ success: true });
+    }
+  } catch (err) {
+    console.log(err);
+    res.send({ err });
   }
 });
 

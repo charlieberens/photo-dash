@@ -1,0 +1,17 @@
+# Credentials
+ACCOUNTS = [{"email": "","pwsecret": ""}]
+PW_SECRET = # 64 Bytes
+SECURITY_KEY = # 32 Bytes
+
+AWS_KEY_ID = 
+AWS_SECRET_KEY = 
+
+ALBUM_DB_NAME = 
+ALBUM_DB_REGION = 
+
+S3_BUCKET_NAME = 
+S3_BUCKET_REGION = 
+
+# Controls
+# If USE_TIMESTAMP is true, files with the same name won't overwrite (used unless space is a concern)
+USE_TIMESTAMP = 1

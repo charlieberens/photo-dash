@@ -1,5 +1,5 @@
 <script setup>
-import { PlusCircleIcon } from "vue-feather-icons";
+import { PlusCircleIcon, Trash2Icon } from "vue-feather-icons";
 </script>
 
 <script>
@@ -37,13 +37,32 @@ export default {
         if (res.data.redirect) {
           window.location.href = res.data.redirect;
         }
-      } else if (res.data.success) {
+      } else {
         this.albums = res.data.items.map((item) => ({
           uploading: [],
-          uploaded: [],
           failed: [],
           ...item,
         }));
+      }
+    },
+    async del(photo) {
+      if (confirm("You sure?")) {
+        const params = {
+          photo,
+        };
+        // Token doesn't work when encoded with URLSearchParams
+        const res = await axios.delete(
+          `/api/photos?token=${this.token}&album_id=${
+            this.albums[this.selected].album_id
+          }&${new URLSearchParams(params).toString()}`
+        );
+        if (res.data.err) {
+          alert(res.data.err);
+        } else if (res.data.success) {
+          this.albums[this.selected].photos = this.albums[
+            this.selected
+          ].photos.filter((url) => url != photo);
+        }
       }
     },
     async uploadImages() {
@@ -65,20 +84,20 @@ export default {
 
       if (res.data.err) {
         alert(res.data.err);
-      } else if (res.data.successes) {
-        const successes = res.data.successes
+      } else {
+        const successes = res.data.return_arr
           .filter((item) => item.success)
           .map((item) => item.name);
-        const failures = res.data.successes
+        const locations = res.data.return_arr
+          .filter((item) => item.success)
+          .map((item) => item.location);
+        const failures = res.data.return_arr
           .filter((item) => !item.success)
           .map((item) => item.name);
-        this.albums[this.selected].uploaded = this.albums[
-          this.selected
-        ].uploaded.concat(
-          this.albums[this.selected].uploading.filter((item) =>
-            successes.includes(item.name)
-          )
-        );
+
+        this.albums[this.selected].photos =
+          this.albums[this.selected].photos.concat(locations);
+
         this.albums[this.selected].failed = this.albums[
           this.selected
         ].failed.concat(
@@ -86,6 +105,7 @@ export default {
             failures.includes(item.name)
           )
         );
+
         this.albums[this.selected].uploading = this.albums[
           this.selected
         ].uploading.filter(
@@ -107,6 +127,7 @@ export default {
             url: URL.createObjectURL(file),
             name: file.name,
             file: file,
+            location: "",
           });
         }
       });
@@ -149,9 +170,7 @@ export default {
           :class="`album real-album${selected === index ? ' selected' : ''}`"
           v-for="(album, index) in albums"
           :key="index"
-          @click="
-            selected = albums[selected].uploading.length ? selected : index
-          "
+          @click="selected = index"
         >
           <span>{{ album.album_name }}</span>
         </div>
@@ -166,42 +185,51 @@ export default {
       </div>
       <div id="dashboard-content-cont">
         <div id="album-info" v-if="selected < albums.length">
+          <div id="album-instructions">
+            <span
+              ><strong>Note:</strong> By default, files with the same name will
+              not overwrite eachother.</span
+            >
+            <span
+              ><strong>Note:</strong> Recently uploaded photos cannot be
+              deleted, reload the page to do so.</span
+            >
+            <span
+              ><strong>Note:</strong> You can upload multiple files at once,
+              either by selecting them or dropping them on the upload box.</span
+            >
+          </div>
+
           <h2>{{ albums[selected].album_name }}</h2>
           <div
             id="photos"
             v-if="
-              albums[selected].photos ||
-              albums[selected].uploaded.length ||
-              albums[selected].uploading.length ||
-              albums[selected].failed.length
+              selected < albums.length &&
+              (albums[selected].photos ||
+                albums[selected].uploading.length ||
+                albums[selected].failed.length)
             "
           >
-            <img
-              class="photo"
-              alt=""
+            <div
+              class="photo-cont"
               v-for="photo in albums[selected].photos"
               :key="photo"
-              :src="photo"
-            />
-            <img
-              class="photo uploaded"
-              alt=""
-              v-for="photo in albums[selected].uploaded"
-              :key="photo"
-              :src="photo.url"
-            />
+            >
+              <span class="garbage" @click="del(photo)"><Trash2Icon /></span>
+              <img class="photo" alt="" :src="photo" />
+            </div>
             <img
               class="photo uploading"
               alt=""
               v-for="photo in albums[selected].uploading"
-              :key="photo"
+              :key="photo.url"
               :src="photo.url"
             />
             <img
               class="photo failed"
               alt=""
               v-for="photo in albums[selected].failed"
-              :key="photo"
+              :key="photo.url"
               :src="photo.url"
             />
             <!-- @click="uploading.splice(uploading.indexOf(photo), 1)" -->
@@ -317,6 +345,13 @@ h2 {
 #dashboard-content-cont {
 }
 
+#album-instructions {
+  display: flex;
+  flex-direction: column;
+  row-gap: 3px;
+  margin-bottom: 15px;
+  opacity: 0.5;
+}
 #album-info {
   border-radius: 5px;
 }
@@ -328,11 +363,42 @@ h2 {
   // border: 1px solid $grey-border;
   margin-bottom: 20px;
 }
+.photo-cont {
+  position: relative;
+
+  &:hover .garbage {
+    opacity: 1;
+    border-bottom-left-radius: 40px;
+  }
+}
+.garbage {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  background: white;
+  border-bottom-left-radius: 20px;
+  opacity: 0;
+  cursor: pointer;
+  transition: 0.15s ease opacity, 0.15s ease border-bottom-left-radius;
+  svg {
+    width: 15px;
+    position: absolute;
+    top: 4px;
+    right: 8px;
+  }
+  &:hover {
+    color: red;
+  }
+}
 .photo {
   aspect-ratio: 4/3;
   width: 100%;
   object-fit: cover;
-  transform: 0.15s ease opacity;
+  transition: 0.15s ease opacity;
   border-radius: 3px;
 
   &.uploading {
